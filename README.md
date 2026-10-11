@@ -33,7 +33,7 @@ The consumer key policy is read from the path in the environment variable `AEE_S
 
 Read: the specification at the pinned revision (`v0.12.1`, `spec/predicates/adversarial-execution-evidence.md`, SHA-256 `759d2383e5da36fa509dc335e6159a20b87641b25ebbadcf1676c55d75ffd8b0`), in full; the three study pages (`builders.md`, `readers.md`, `coders.md`); and, from the 0.12.1 README on PyPI, the section "What the suite compares" plus the one sentence of "Run the suite against your verifier" that states the command-line contract.
 
-Not read before this build was posted: the conformance vectors, their changelog, the two outside verifiers, the reference rail, and the README's registry of condition codes. The registry was left unread on purpose: it is a checklist derived from another implementation. The `codes` this verifier emits are therefore its own names for the rules it enforces, and they will not intersect the registry's.
+Not read before this build was posted: the conformance vectors, their changelog, the two outside verifiers, the reference rail, and the README's registry of condition codes. The registry was left unread on purpose: it is a checklist derived from another implementation. The `codes` this verifier emits are therefore its own names for the rules it enforces: where one of them matches a name in the registry, that is a coincidence of wording and not a shared definition.
 
 Seen earlier, and declared on the invitation thread: in August 2026 the repository (then `astrogilda/aee-conformance`) was explored through the GitHub API: its README, its file tree (250 vectors counted), its forcing-campaign figures, and the eight vectors described in one of its issues.
 
