@@ -159,7 +159,10 @@ ok('predicate-level evidenceTier and aee* members are ignored', build({ statemen
 ok('producer territory inside a payload is inert', build({ records: (c) => [interception({ confidence: 'low', strength: 0 }), arming(c, { vendor: { rank: 3 } }), sealed(c)] }), 'fail');
 ok('issuedAt with -00:00 and a fraction', build({ issuedAt: '2026-06-23T16:08:07.250-00:00' }), 'fail');
 ok('a fail-closed artifact row forces fail and stays valid', build({ rows: () => [caughtRow(), row('CO-EXFIL-2'), { attackId: 'FS-WRITE-1', containmentObserved: 'something_else', basis: 'substrate_observed', method: 'intercepted', attribution: 'paired', actualLayer: 'x' }] }), 'fail');
-ok('a missing attribution forces fail', allClean({ result: 'fail', rows: () => IDS.map((id, i) => { const r = row(id, { observationRefs: [0, 1] }); if (i === 2) delete r.attribution; return r; }) }), 'fail');
+// a missing or out-of-vocabulary attribution is fail-closed on a row whose attack HAS an expectation
+// (the refusals for a row whose attack has none are under "attribution" below, each paired with these)
+ok('a missing attribution forces fail, on a row whose attack has an expectation', allClean({ result: 'fail', rows: () => IDS.map((id, i) => { const r = row(id, { observationRefs: [0, 1] }); if (i === 0) delete r.attribution; return r; }) }), 'fail');
+ok('an out-of-vocabulary attribution forces fail, on a row whose attack has an expectation', allClean({ result: 'fail', rows: () => IDS.map((id, i) => row(id, { observationRefs: [0, 1], ...(i === 0 ? { attribution: 'example_strong' } : {}) })) }), 'fail');
 ok('two arming and two sealed records, all valid', allClean({ records: (c) => [arming(c), sealed(c, { aeeObservedAttacks: [] }), arming(c, { armedAt: '2026-06-23T16:00:01Z' }), sealed(c, { aeeObservedAttacks: [], aeeDropCount: 2, aeeDropBound: 5 })] }), 'pass');
 ok('a drop count within its declared bound', allClean({ records: (c) => [arming(c), sealed(c, { aeeObservedAttacks: [], aeeDropCount: 3, aeeDropBound: 3 })] }), 'pass');
 ok('a run-sequence genesis', allClean({ records: (c) => [arming(c, { aeeRunSeq: 1, aeeChainScope: ['subject'] }), sealed(c, { aeeObservedAttacks: [] })] }), 'pass');
@@ -170,7 +173,8 @@ ok('a pinned row whose interception is shared with a second caught row', build({
 ok('depth exactly 128', build({ statement: (s) => { let v = 1; for (let k = 0; k < 126; k++) v = [v]; s.predicate.deep = v; } }), 'fail');
 ok('escapes: a surrogate pair, a control escape, U+0000', build({ statement: (s) => { s.predicate.note = 'a\u0000b😀\u001f'; } }), 'fail');
 ok('exponent notation, fractions and the largest safe integer are legal JSON numbers', edit(build({ statement: (s) => { s.predicate.n = 111; } }), '"n":111', '"n":[1.5e15,-0,1E2,0.1e-3,9007199254740991,-9007199254740991,9.007199254740991e15]'), 'fail');
-ok('earlier member spellings are unknown members, and ignored', build({ statement: (s) => { s.predicate.does_not_assert = ['x']; s.predicate.interceptRecords = []; s.predicate.attackResults[0].interceptRefs = [0]; } }), 'fail');
+// earlier spellings are rejected, no alias (the refusals are under "earlier spellings" below; their
+// control is the base statement, which carries the canonical spellings)
 ok('a class listed twice in assessedClasses is one class', allClean({ coverage: { assessedClasses: ['CO', 'CO', 'FS'], outOfScope: {}, routedElsewhere: {} } }), 'pass');
 ok('strings are kept as written: a leading U+FEFF, escapes beside raw multi-byte characters', artifactOnly({ manifest: { classes: { CO: ['CO-EXFIL-1', 'CO-EXFIL-2'], FS: ['FS-WRITE-1'] }, note: BOM + 'é' + String.fromCharCode(1) + '日本😀"\\/x' + LS } }), 'pass_indirect');
 ok('one record: the root is its leaf hash', artifactOnly({ records: () => [examination()] }), 'pass_indirect');
@@ -383,6 +387,23 @@ no('pinned with no expectation in the corpus', build({ rows: () => [caughtRow({ 
 no('pinned over an interception carrying another commitment', build({ records: (c) => [interception({ aeePayloadCommitment: [H('another payload')] }), arming(c), sealed(c)] }), 'ROW_PINNED_NOT_SUPPORTED');
 no('pinned on a clean row, which resolves no interception', allClean({ rows: () => IDS.map((id, i) => row(id, { observationRefs: [0, 1], ...(i === 0 ? { attribution: 'pinned' } : {}) })) }), 'ROW_PINNED_NOT_SUPPORTED');
 no('pinned on an artifact row with no record', artifactOnly({ statement: (s) => { s.predicate.attackResults[0].attribution = 'pinned'; } }), 'ROW_PINNED_NOT_SUPPORTED');
+// a row whose attack carries no expectedPayloads entry MUST declare `paired` (coverage validity, a precondition);
+// the controls are the two "forces fail" statements above, on the attack that HAS an expectation
+no('a missing attribution on a row whose attack has no expectation', allClean({ result: 'fail', rows: () => IDS.map((id, i) => { const r = row(id, { observationRefs: [0, 1] }); if (i === 2) delete r.attribution; return r; }) }), 'ROW_NO_EXPECTATION_NOT_PAIRED');
+no('an out-of-vocabulary attribution on a row whose attack has no expectation', allClean({ result: 'fail', rows: () => IDS.map((id, i) => row(id, { observationRefs: [0, 1], ...(i === 2 ? { attribution: 'example_strong' } : {}) })) }), 'ROW_NO_EXPECTATION_NOT_PAIRED');
+// on an artifact statement carrying pass_indirect, the missing attribution also makes the carried result
+// not recompute (the row is fail-closed too): the precondition is asserted among the codes, the control
+// differing by the one deleted member
+noAmong('a missing attribution on an artifact row whose attack has no expectation', artifactOnly({ statement: (s) => { delete s.predicate.attackResults[1].attribution; } }), 'ROW_NO_EXPECTATION_NOT_PAIRED');
+noAmong('a missing attribution where the manifest carries no expectedPayloads at all', artifactOnly({ manifest: { classes: { CO: ['CO-EXFIL-1', 'CO-EXFIL-2'], FS: ['FS-WRITE-1'] } }, statement: (s) => { delete s.predicate.attackResults[0].attribution; } }), 'ROW_NO_EXPECTATION_NOT_PAIRED');
+ok('paired on every row where the manifest carries no expectedPayloads at all', artifactOnly({ manifest: { classes: { CO: ['CO-EXFIL-1', 'CO-EXFIL-2'], FS: ['FS-WRITE-1'] } } }), 'pass_indirect');
+
+// ── earlier spellings: rejected, no alias (control: the base statement, canonical spellings) ──
+no('the earlier spelling does_not_assert', build({ statement: (s) => { s.predicate.does_not_assert = s.predicate.doesNotAssert; delete s.predicate.doesNotAssert; } }), 'OLD_SPELLING_CARRIED');
+no('does_not_assert carried beside doesNotAssert', build({ statement: (s) => { s.predicate.does_not_assert = ['x']; } }), 'OLD_SPELLING_CARRIED');
+no('the earlier spelling interceptRecords, empty', build({ statement: (s) => { s.predicate.interceptRecords = []; } }), 'OLD_SPELLING_CARRIED');
+no('the earlier spelling interceptRefs on a row', build({ statement: (s) => { s.predicate.attackResults[0].interceptRefs = [0]; } }), 'OLD_SPELLING_CARRIED');
+no('the earlier spelling interceptRefs on an artifact row', artifactOnly({ statement: (s) => { s.predicate.attackResults[2].interceptRefs = []; } }), 'OLD_SPELLING_CARRIED');
 ok('pinned where one of two commitments is the expected one', build({ records: (c) => [interception({ aeePayloadCommitment: [H('another payload'), H('payload-1')].sort() }), arming(c), sealed(c)] }), 'fail');
 
 // ── the evidence tier ──

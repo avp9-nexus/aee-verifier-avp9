@@ -422,6 +422,13 @@ export function verifyStatement(buf, keys = []) {
   if (issuedAt === null) err('ISSUED_AT_INVALID', 'issuedAt is absent or outside the RFC 3339 profile (uppercase T; Z, +00:00 or -00:00)');
 
   if (P.has('doesNotAssert') && !isStrArray(P.get('doesNotAssert'))) err('DOES_NOT_ASSERT_MISTYPED', 'doesNotAssert is present and is not an array of strings');
+  // Earlier spellings are rejected, with no alias: `does_not_assert` (the doesNotAssert field text, and the
+  // change history: "the old spelling is rejected"), `interceptRecords` and `interceptRefs` (the change
+  // history: "old spellings rejected, no alias"). The text states no other consequence; "rejected" is read
+  // as a refusal of the statement that carries one. (`interceptRefs` is a row member, checked with the rows.)
+  for (const old of ['does_not_assert', 'interceptRecords']) {
+    if (P.has(old)) err('OLD_SPELLING_CARRIED', `the predicate carries ${old}, an earlier spelling the text rejects with no alias`);
+  }
 
   // observationEnvironment
   const env = P.get('observationEnvironment');
@@ -551,6 +558,7 @@ export function verifyStatement(buf, keys = []) {
   const seenAttack = new Set();
   for (const [idx, row] of (Array.isArray(rowsRaw) ? rowsRaw : []).entries()) {
     if (!isMap(row)) { err('ROW_MALFORMED', `attackResults[${idx}] is not an object`); continue; }
+    if (row.has('interceptRefs')) err('OLD_SPELLING_CARRIED', `attackResults[${idx}] carries interceptRefs, an earlier spelling the text rejects with no alias`);
     const attackId = row.get('attackId');
     if (!isStr(attackId)) err('ROW_ATTACK_ID_INVALID', `attackResults[${idx}] carries no attackId`);
     else {
@@ -689,6 +697,12 @@ export function verifyStatement(buf, keys = []) {
       const entry = expected && isStr(row.attackId) ? expected.get(row.attackId) : undefined;
       const carries = (r) => Array.isArray(r.p.get('aeePayloadCommitment')) && r.p.get('aeePayloadCommitment').some((x) => entry.has(x));
       if (inter.length === 0 || !entry || !inter.every(carries)) err('ROW_PINNED_NOT_SUPPORTED', `${where} declares attribution: pinned without an interception record carrying a commitment the corpus declared for this attack`);
+    } else if (!(expected && expected.has(row.attackId)) && row.attribution !== 'paired') {
+      // every row: a row whose attack carries no expectedPayloads entry MUST declare `paired`. It is a
+      // coverage validity requirement, a precondition: on failure the statement is invalid. The general
+      // rule that a missing or out-of-vocabulary `attribution` is fail-closed governs `result` on a valid
+      // statement; it does not lift the precondition. (`pinned` without an entry is refused just above.)
+      err('ROW_NO_EXPECTATION_NOT_PAIRED', `${where} names an attack with no expectedPayloads entry and does not declare attribution: paired`);
     }
     if (!row.substrate) continue;
     // a basis: substrate row
